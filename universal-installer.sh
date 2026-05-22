@@ -21,6 +21,7 @@ AUTO_MODE=false
 SKIP_DEPS=false
 DETECTED_RESOLUTION=""
 DETECTED_SCALING="1"
+IS_BAZZITE=false
 
 print_banner() {
     clear
@@ -134,6 +135,12 @@ detect_distribution() {
         log_success "Detected: ${BOLD}$DISTRO_NAME${NC}"
         log_info "Distribution ID: $DISTRO_ID"
         log_info "Version: ${DISTRO_VERSION:-N/A}"
+        
+        # Bazzite is identified by VARIANT_ID or by ID in /etc/os-release
+        if [[ "$DISTRO_ID" == "bazzite" ]] || echo "${VARIANT_ID:-}" | grep -qi "bazzite"; then
+            IS_BAZZITE=true
+            log_info "Bazzite detected — applying Fedora/rpm-ostree compatibility"
+        fi
     else
         log_error "Cannot detect distribution. /etc/os-release not found"
         exit 1
@@ -142,6 +149,17 @@ detect_distribution() {
 
 detect_package_manager() {
     log_step "Detecting Package Manager"
+    
+    # Bazzite/Universal Blue: rpm-ostree must be used for layering packages.
+    # dnf is present but cannot install system packages on immutable Fedora images.
+    if [[ "$IS_BAZZITE" == "true" ]] && command -v rpm-ostree &>/dev/null; then
+        PKG_MANAGER="rpm-ostree"
+        PKG_INSTALL="rpm-ostree install --idempotent -y"
+        PKG_UPDATE="rpm-ostree upgrade"
+        log_success "Package Manager: ${BOLD}rpm-ostree${NC} (Bazzite/immutable Fedora)"
+        log_warning "rpm-ostree package changes require a ${BOLD}reboot${NC} to take effect"
+        return
+    fi
     
     if command -v pacman &>/dev/null; then
         PKG_MANAGER="pacman"
@@ -300,7 +318,7 @@ check_dependencies() {
         deps_missing+=("ImageMagick")
     fi
     
-    if ! command -v grub-mkfont &>/dev/null; then
+    if ! command -v grub-mkfont &>/dev/null && ! command -v grub2-mkfont &>/dev/null; then
         deps_missing+=("grub")
     fi
     
@@ -337,6 +355,16 @@ install_dependencies() {
     $PKG_UPDATE 2>&1 | tee -a "$LOG_FILE" || true
     
     case "$PKG_MANAGER" in
+        rpm-ostree)
+            log_info "Installing: grub2-tools-extra ImageMagick gettext zip"
+            log_warning "This will layer packages via rpm-ostree. A ${BOLD}reboot is required${NC} before the installer can continue."
+            $PKG_INSTALL grub2-tools-extra ImageMagick gettext zip 2>&1 | tee -a "$LOG_FILE"
+            echo ""
+            log_warning "Packages have been staged. Please ${BOLD}reboot now${NC} and re-run the installer with --skip-deps."
+            echo -e "${CYAN}  sudo reboot${NC}"
+            echo -e "${CYAN}  sudo ./universal-installer.sh --skip-deps${NC}"
+            exit 0
+            ;;
         pacman)
             log_info "Installing: grub imagemagick gettext zip"
             $PKG_INSTALL grub imagemagick gettext zip 2>&1 | tee -a "$LOG_FILE"
@@ -470,7 +498,11 @@ configure_installation() {
     log_step "Configure Installation Options"
     
     if [[ "$AUTO_MODE" == "true" ]]; then
-        INSTALL_LOCATION="/boot/grub/themes"
+        if [[ "$IS_BAZZITE" == "true" ]]; then
+            INSTALL_LOCATION="/boot/grub2/themes"
+        else
+            INSTALL_LOCATION="/boot/grub/themes"
+        fi
         DISABLE_MEMTEST="yes"
         PATCH_10_LINUX="yes"
         PATCH_30_UEFI="yes"
@@ -480,13 +512,22 @@ configure_installation() {
     
     echo ""
     echo -e "${BOLD}Installation Location:${NC}"
-    echo -e "  ${CYAN}1)${NC} /boot/grub/themes ${GREEN}(recommended)${NC}"
-    echo -e "  ${CYAN}2)${NC} /usr/share/grub/themes"
+    if [[ "$IS_BAZZITE" == "true" ]]; then
+        echo -e "  ${CYAN}1)${NC} /boot/grub2/themes ${GREEN}(recommended for Bazzite/Fedora)${NC}"
+        echo -e "  ${CYAN}2)${NC} /usr/share/grub/themes"
+    else
+        echo -e "  ${CYAN}1)${NC} /boot/grub/themes ${GREEN}(recommended)${NC}"
+        echo -e "  ${CYAN}2)${NC} /usr/share/grub/themes"
+    fi
     echo ""
-    local loc_choice=$(prompt_choice "Choose installation location" "/boot/grub/themes (recommended)" "/usr/share/grub/themes")
+    local loc_choice=$(prompt_choice "Choose installation location" "/boot/grub2/themes (recommended for Bazzite/Fedora)" "/usr/share/grub/themes")
     
     if [[ "$loc_choice" == "1" ]]; then
-        INSTALL_LOCATION="/boot/grub/themes"
+        if [[ "$IS_BAZZITE" == "true" ]]; then
+            INSTALL_LOCATION="/boot/grub2/themes"
+        else
+            INSTALL_LOCATION="/boot/grub/themes"
+        fi
     else
         INSTALL_LOCATION="/usr/share/grub/themes"
     fi
@@ -711,7 +752,11 @@ EOF
     
     echo -e "${BOLD}To restore original configuration:${NC}"
     echo -e "  ${CYAN}sudo cp /etc/default/grub.wintux.bak /etc/default/grub${NC}"
-    echo -e "  ${CYAN}sudo grub-mkconfig -o /boot/grub/grub.cfg${NC}"
+    if [[ "$IS_BAZZITE" == "true" ]]; then
+        echo -e "  ${CYAN}sudo grub2-mkconfig -o /boot/grub2/grub.cfg${NC}"
+    else
+        echo -e "  ${CYAN}sudo grub-mkconfig -o /boot/grub/grub.cfg${NC}"
+    fi
     echo ""
     
     echo -e "${BOLD}Enjoy your new GRUB theme! 🎨${NC}"

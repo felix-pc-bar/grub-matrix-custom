@@ -1,4 +1,3 @@
 * "Cousine" font by Steve Matteson
 * "Terminus TTF" font by Dimitar Toshkov Zhekov and Tilman Blumenbach
-*  old "WinTux Dualboot" artwork by ABOhiccups
-*  new artwork by @felix-pc-bar
+* "WinTux Dualboot" artwork by ABOhiccups

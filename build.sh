@@ -29,6 +29,16 @@ MARGIN_BETWEEN_TEMPLATE_AND_LABEL_INITIAL=40
 FONT_SIZE=16
 TERMINAL_FONT_SIZE=14
 
+# Bazzite/Fedora-based systems ship grub2-mkfont instead of grub-mkfont
+if command -v grub2-mkfont &>/dev/null; then
+  GRUB_MKFONT="grub2-mkfont"
+elif command -v grub-mkfont &>/dev/null; then
+  GRUB_MKFONT="grub-mkfont"
+else
+  echo "Error: neither grub-mkfont nor grub2-mkfont found. Install grub2-tools-extra (Fedora/Bazzite) or grub (other distros)."
+  exit 1
+fi
+
 if [[ $(awk -v s="$scaling" 'BEGIN {print (s >= 1.25)}') -eq 1 ]]
 then
   FONT_SIZE=20
@@ -74,11 +84,11 @@ font_offset=$(awk -v h="$resolution_h" 'BEGIN {print int((h / 2) - 10)}')
 
 label_offset=$(awk -v w="$resolution_w" 'BEGIN {print int(-(w - 10))}')
 
-grub-mkfont -s "$FONT_SIZE" -c "$font_offset" -d "-$font_offset" -n "Label" -o "$theme_dir/label-$FONT_SIZE.pf2" "./src/fonts/cousine/Cousine Regular.ttf"
+$GRUB_MKFONT -s "$FONT_SIZE" -c "$font_offset" -d "-$font_offset" -n "Label" -o "$theme_dir/label-$FONT_SIZE.pf2" "./src/fonts/cousine/Cousine Regular.ttf"
 
-grub-mkfont -s "$FONT_SIZE" -o "$theme_dir/cousine-$FONT_SIZE.pf2" "./src/fonts/cousine/Cousine Regular.ttf"
+$GRUB_MKFONT -s "$FONT_SIZE" -o "$theme_dir/cousine-$FONT_SIZE.pf2" "./src/fonts/cousine/Cousine Regular.ttf"
 
-grub-mkfont -s "$TERMINAL_FONT_SIZE" -o "$theme_dir/terminus-$TERMINAL_FONT_SIZE.pf2" "./src/fonts/terminus/TerminusTTF.ttf"
+$GRUB_MKFONT -s "$TERMINAL_FONT_SIZE" -o "$theme_dir/terminus-$TERMINAL_FONT_SIZE.pf2" "./src/fonts/terminus/TerminusTTF.ttf"
 
 CONVERT_PARAMS="-resize "$template_final_size_w"x"$template_final_size_h" -background black -gravity center -extent "$resolution_w"x"$resolution_h""
 
